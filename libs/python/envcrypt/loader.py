@@ -210,8 +210,8 @@ class EnvcryptLoader:
                 value = value[1:-1]
                 quoted = True
             
-            # Skip already encrypted
-            if value.startswith(ENCRYPTED_PREFIX):
+            # Skip already encrypted or empty values
+            if value.startswith(ENCRYPTED_PREFIX) or value == "":
                 lines.append(line)
             else:
                 encrypted = self.encrypt(value)

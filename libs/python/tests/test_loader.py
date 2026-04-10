@@ -217,6 +217,14 @@ class TestContentEncryption:
         count = result.count("encrypted:")
         assert count == 2
     
+    def test_encrypt_content_skips_empty_values(self, loader):
+        content = "EMPTY=\nQUOTED=\"\"\nSINGLE=''\nSECRET=value\n"
+        encrypted = loader.encrypt_content(content)
+
+        assert "EMPTY=\n" in encrypted
+        assert "encrypted:" not in encrypted.split("\n")[0]
+        assert "SECRET=encrypted:" in encrypted
+
     def test_decrypt_content_skips_plain(self, loader):
         content = "PLAIN_VAR=plain_value\n"
         decrypted = loader.decrypt_content(content)

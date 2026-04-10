@@ -167,7 +167,7 @@ export class EnvcryptLoader {
         const parsed = parseEnvLine(afterHash);
         if (parsed) {
           const [key, value] = parsed;
-          if (!value.startsWith(ENCRYPTED_PREFIX)) {
+          if (!value.startsWith(ENCRYPTED_PREFIX) && value !== "") {
             const encrypted = this.encrypt(value);
             output.push(`# ${key}=${encrypted}`);
             continue;
@@ -180,7 +180,7 @@ export class EnvcryptLoader {
       const parsed = parseEnvLine(trimmed);
       if (parsed) {
         const [key, value] = parsed;
-        if (value.startsWith(ENCRYPTED_PREFIX)) {
+        if (value.startsWith(ENCRYPTED_PREFIX) || value === "") {
           output.push(line);
         } else {
           const encrypted = this.encrypt(value);

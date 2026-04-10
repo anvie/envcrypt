@@ -253,6 +253,23 @@ describe("Content Encryption", () => {
     expect(count).toBe(1);
   });
 
+  it("skips encryption of empty values", () => {
+    const content = 'EMPTY=\nQUOTED=""\nSINGLE=\'\'\nSECRET=value\n';
+    const encrypted = loader.encryptContent(content);
+
+    expect(encrypted).toContain("EMPTY=\n");
+    expect(encrypted).not.toContain("EMPTY=encrypted:");
+    expect(encrypted).toContain("SECRET=encrypted:");
+  });
+
+  it("skips encryption of commented empty values", () => {
+    const content = '# EMPTY=\n# QUOTED=""\nSECRET=value\n';
+    const encrypted = loader.encryptContent(content);
+
+    expect(encrypted).toContain("# EMPTY=\n");
+    expect(encrypted).not.toContain("# EMPTY=encrypted:");
+  });
+
   it("decrypt content skips plain values", () => {
     const content = "PLAIN_VAR=plain_value\n";
     const decrypted = loader.decryptContent(content);

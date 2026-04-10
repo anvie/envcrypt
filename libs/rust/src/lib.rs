@@ -248,7 +248,7 @@ impl EnvcryptLoader {
             if trimmed.starts_with('#') {
                 let after_hash = trimmed[1..].trim_start();
                 if let Some((key, value)) = parse_env_line(after_hash) {
-                    if !value.starts_with(ENCRYPTED_PREFIX) {
+                    if !value.starts_with(ENCRYPTED_PREFIX) && !value.is_empty() {
                         let encrypted = self.encrypt(value)?;
                         output.push_str(&format!("# {}={}", key, encrypted));
                         output.push('\n');
@@ -262,7 +262,7 @@ impl EnvcryptLoader {
 
             if let Some((key, value)) = parse_env_line(trimmed) {
                 // Skip already encrypted values
-                if value.starts_with(ENCRYPTED_PREFIX) {
+                if value.starts_with(ENCRYPTED_PREFIX) || value.is_empty() {
                     output.push_str(line);
                 } else {
                     let encrypted = self.encrypt(value)?;
@@ -629,6 +629,29 @@ mod tests {
         let content = "PLAIN_VAR=plain_value\n";
         let decrypted = loader.decrypt_content(content).unwrap();
         assert!(decrypted.contains("PLAIN_VAR=plain_value"));
+    }
+
+    #[test]
+    fn test_encrypt_content_skips_empty_values() {
+        let loader = create_loader();
+        let content = "EMPTY=\nQUOTED_EMPTY=\"\"\nSINGLE_EMPTY=''\nHAS_VALUE=secret\n";
+        let encrypted = loader.encrypt_content(content).unwrap();
+
+        assert!(encrypted.contains("EMPTY=\n"));
+        assert!(encrypted.contains("QUOTED_EMPTY=\"\"\n"));
+        assert!(encrypted.contains("SINGLE_EMPTY=''\n"));
+        assert!(encrypted.contains("HAS_VALUE=encrypted:"));
+    }
+
+    #[test]
+    fn test_encrypt_content_skips_commented_empty_values() {
+        let loader = create_loader();
+        let content = "# EMPTY=\n# QUOTED=\"\"\nAPI_KEY=secret\n";
+        let encrypted = loader.encrypt_content(content).unwrap();
+
+        assert!(encrypted.contains("# EMPTY=\n"));
+        assert!(encrypted.contains("# QUOTED=\"\"\n"));
+        assert!(encrypted.contains("API_KEY=encrypted:"));
     }
 
     // === Parse Line ===
