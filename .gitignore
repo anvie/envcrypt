@@ -36,6 +36,10 @@ htmlcov/
 # Config dengan key (JANGAN commit!)
 .envcrypt.yaml
 
+# Node.js / TypeScript
+node_modules/
+dist/
+
 # IDE
 .idea/
 .vscode/
