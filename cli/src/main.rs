@@ -53,6 +53,10 @@ enum Commands {
         /// Use this key instead of config file
         #[arg(short, long)]
         key: Option<String>,
+
+        /// Glob patterns to exclude from encryption (e.g. 'LOG_*')
+        #[arg(short = 'e', long)]
+        exclude: Vec<String>,
     },
 
     /// Decrypt values in a .env file
@@ -129,7 +133,8 @@ fn main() -> Result<()> {
             in_place,
             config,
             key,
-        } => cmd_encrypt(file, output, in_place, config, key),
+            exclude,
+        } => cmd_encrypt(file, output, in_place, config, key, exclude),
 
         Commands::Decrypt {
             file,
@@ -214,12 +219,13 @@ fn cmd_encrypt(
     in_place: bool,
     config: Option<PathBuf>,
     key: Option<String>,
+    exclude: Vec<String>,
 ) -> Result<()> {
     let loader = get_loader(config, key)?;
     let content = fs::read_to_string(&file)
         .with_context(|| format!("Failed to read {}", file.display()))?;
 
-    let encrypted = loader.encrypt_content(&content)?;
+    let encrypted = loader.encrypt_content(&content, &exclude)?;
 
     if in_place {
         fs::write(&file, &encrypted)?;

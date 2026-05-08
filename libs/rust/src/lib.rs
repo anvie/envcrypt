@@ -27,7 +27,6 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
-
 pub const ENCRYPTED_PREFIX: &str = "encrypted:";
 const NONCE_SIZE: usize = 12;
 const KEY_SIZE: usize = 32;
@@ -231,7 +230,13 @@ impl EnvcryptLoader {
     }
 
     /// Encrypt all values in .env content
-    pub fn encrypt_content(&self, content: &str) -> Result<String> {
+    pub fn encrypt_content(&self, content: &str, exclude_patterns: &[String]) -> Result<String> {
+        // Pre-compile exclude glob patterns for efficiency
+        let exclude_globs: Vec<glob::Pattern> = exclude_patterns
+            .iter()
+            .filter_map(|p| glob::Pattern::new(p).ok())
+            .collect();
+
         let mut output = String::new();
 
         for line in content.lines() {
@@ -248,7 +253,7 @@ impl EnvcryptLoader {
             if trimmed.starts_with('#') {
                 let after_hash = trimmed[1..].trim_start();
                 if let Some((key, value)) = parse_env_line(after_hash) {
-                    if !value.starts_with(ENCRYPTED_PREFIX) && !value.is_empty() {
+                    if !value.starts_with(ENCRYPTED_PREFIX) && !value.is_empty() && !key_is_excluded(key, &exclude_globs) {
                         let encrypted = self.encrypt(value)?;
                         output.push_str(&format!("# {}={}", key, encrypted));
                         output.push('\n');
@@ -262,7 +267,7 @@ impl EnvcryptLoader {
 
             if let Some((key, value)) = parse_env_line(trimmed) {
                 // Skip already encrypted values
-                if value.starts_with(ENCRYPTED_PREFIX) || value.is_empty() {
+                if value.starts_with(ENCRYPTED_PREFIX) || value.is_empty() || key_is_excluded(key, &exclude_globs) {
                     output.push_str(line);
                 } else {
                     let encrypted = self.encrypt(value)?;
@@ -323,6 +328,11 @@ impl EnvcryptLoader {
 
         Ok(output)
     }
+}
+
+/// Check if a key matches any of the given exclude glob patterns.
+fn key_is_excluded(key: &str, patterns: &[glob::Pattern]) -> bool {
+    patterns.iter().any(|pat| pat.matches(key))
 }
 
 /// Parse a single env line: KEY=VALUE
@@ -555,7 +565,7 @@ mod tests {
     fn test_encrypt_content() {
         let loader = create_loader();
         let content = "DB_URL=postgres://localhost\nAPI_KEY=secret123\n";
-        let encrypted = loader.encrypt_content(content).unwrap();
+        let encrypted = loader.encrypt_content(content, &[]).unwrap();
 
         assert!(encrypted.contains("DB_URL=encrypted:"));
         assert!(encrypted.contains("API_KEY=encrypted:"));
@@ -569,7 +579,7 @@ mod tests {
     fn test_encrypt_content_preserves_comments() {
         let loader = create_loader();
         let content = "# Database settings\nDB_URL=localhost\n\n# API\nAPI_KEY=secret\n";
-        let encrypted = loader.encrypt_content(content).unwrap();
+        let encrypted = loader.encrypt_content(content, &[]).unwrap();
 
         assert!(encrypted.contains("# Database settings"));
         assert!(encrypted.contains("# API"));
@@ -581,7 +591,7 @@ mod tests {
         let encrypted_val = loader.encrypt("already").unwrap();
         let content = format!("ALREADY={}\nPLAIN=value\n", encrypted_val);
         
-        let result = loader.encrypt_content(&content).unwrap();
+        let result = loader.encrypt_content(&content, &[]).unwrap();
         
         // Count occurrences of encrypted: - should still be 2 (one original, one new)
         let count = result.matches("encrypted:").count();
@@ -592,7 +602,7 @@ mod tests {
     fn test_encrypt_content_commented_key_value() {
         let loader = create_loader();
         let content = "# DB_URL=postgres://localhost\nAPI_KEY=secret\n";
-        let encrypted = loader.encrypt_content(content).unwrap();
+        let encrypted = loader.encrypt_content(content, &[]).unwrap();
 
         assert!(encrypted.contains("# DB_URL=encrypted:"));
         assert!(encrypted.contains("API_KEY=encrypted:"));
@@ -606,7 +616,7 @@ mod tests {
     fn test_encrypt_content_preserves_pure_comments() {
         let loader = create_loader();
         let content = "# This is a note\n# Another comment\nKEY=value\n";
-        let encrypted = loader.encrypt_content(content).unwrap();
+        let encrypted = loader.encrypt_content(content, &[]).unwrap();
 
         assert!(encrypted.contains("# This is a note"));
         assert!(encrypted.contains("# Another comment"));
@@ -618,7 +628,7 @@ mod tests {
         let encrypted_val = loader.encrypt("secret").unwrap();
         let content = format!("# ALREADY={}\n", encrypted_val);
 
-        let result = loader.encrypt_content(&content).unwrap();
+        let result = loader.encrypt_content(&content, &[]).unwrap();
         // Should not double-encrypt
         assert_eq!(result.matches("encrypted:").count(), 1);
     }
@@ -635,7 +645,7 @@ mod tests {
     fn test_encrypt_content_skips_empty_values() {
         let loader = create_loader();
         let content = "EMPTY=\nQUOTED_EMPTY=\"\"\nSINGLE_EMPTY=''\nHAS_VALUE=secret\n";
-        let encrypted = loader.encrypt_content(content).unwrap();
+        let encrypted = loader.encrypt_content(content, &[]).unwrap();
 
         assert!(encrypted.contains("EMPTY=\n"));
         assert!(encrypted.contains("QUOTED_EMPTY=\"\"\n"));
@@ -647,7 +657,7 @@ mod tests {
     fn test_encrypt_content_skips_commented_empty_values() {
         let loader = create_loader();
         let content = "# EMPTY=\n# QUOTED=\"\"\nAPI_KEY=secret\n";
-        let encrypted = loader.encrypt_content(content).unwrap();
+        let encrypted = loader.encrypt_content(content, &[]).unwrap();
 
         assert!(encrypted.contains("# EMPTY=\n"));
         assert!(encrypted.contains("# QUOTED=\"\"\n"));
